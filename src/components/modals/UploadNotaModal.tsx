@@ -52,27 +52,6 @@ export default function UploadNotaModal({ onClose, onSuccess }: Props) {
     e.preventDefault();
   };
 
-  const simulateAIProcessing = async (): Promise<any> => {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    return {
-      estabelecimento: 'Supermercado Exemplo Ltda',
-      cnpj: '12.345.678/0001-99',
-      endereco: 'Rua Exemplo, 123 - São Paulo/SP',
-      telefone: '(11) 1234-5678',
-      valor_total: 247.5,
-      data_emissao: new Date().toISOString().split('T')[0],
-      hora_emissao: '14:23:00',
-      numero_nota: 'NF-e 123456789',
-      categoria: 'alimentacao',
-      items: [
-        { quantidade: 2, descricao: 'Arroz Tipo 1 5kg', valor_unitario: 24.9, valor_total: 49.8 },
-        { quantidade: 1, descricao: 'Feijão Preto 1kg', valor_unitario: 8.5, valor_total: 8.5 },
-        { quantidade: 3, descricao: 'Leite Integral 1L', valor_unitario: 4.99, valor_total: 14.97 },
-      ],
-      insight: 'Você gastou 23% a mais com alimentação neste mês comparado ao mês anterior.',
-    };
-  };
 
   const handleUpload = async () => {
     if (!file || !user) return;
@@ -92,7 +71,25 @@ export default function UploadNotaModal({ onClose, onSuccess }: Props) {
 
       const { data: urlData } = supabase.storage.from('notas').getPublicUrl(fileName);
 
-      const aiResult = await simulateAIProcessing();
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-nota`;
+
+      const analysisResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          imageUrl: urlData.publicUrl,
+        }),
+      });
+
+      if (!analysisResponse.ok) {
+        const errorData = await analysisResponse.json();
+        throw new Error(errorData.error || 'Erro ao analisar nota fiscal');
+      }
+
+      const aiResult = await analysisResponse.json();
 
       const { data: notaData, error: notaError } = await supabase
         .from('notas_fiscais')
@@ -145,7 +142,7 @@ export default function UploadNotaModal({ onClose, onSuccess }: Props) {
       }, 2000);
     } catch (err: any) {
       console.error('Upload error:', err);
-      setError(err.message || 'Erro ao processar nota fiscal');
+      setError(err.message || 'Erro ao processar nota fiscal. Verifique a qualidade da imagem.');
       setProcessing(false);
     }
   };
